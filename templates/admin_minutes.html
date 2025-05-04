@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>議事錄</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script> <!-- 引入 Axios -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/admin_minutes.css">
+</head>
+
+<body>
+    {% raw %}
+    <!-- Header -->
+    <div id="app" class="content-container">
+        <header>
+            <nav>
+                <ul>
+                    <li><a href="/notifi">議程暨關係文書</a></li>
+                    <li><a href="/minutes">議事錄</a></li>
+                    <li><a href="/regulations">法規資料</a></li>
+                    <li v-if="editable === true"><a href="/logout">登出</a></li>
+                    <li v-else><a href="/">登入</a></li>
+                </ul>
+            </nav>
+        </header>
+        <div id="app_background">
+            <!-- <button v-if="editable" class="new_btn" @click="openModal(-1)">新增議事錄</button> -->
+            <div v-if="loading" class="loading-overlay">
+                <div class="loading-box">
+                    <div class="spinner-border custom-spinner" role="status"></div>
+                    <span class="loading-text">載入中...</span>
+                </div>
+            </div>
+            <div v-for="(items, key) in scsession" :key="key" class="section">
+                <h1>{{ key }}</h1>
+                <div v-for="item in items" :key="item.id">
+                    <button class="item_btn" @click="openModal(item.id)">{{ item.title }}</button>
+                </div>
+            </div>
+            <!-- Modal -->
+            <div class="modal fade" id="itemModal" tabindex="-1" aria-labelledby="itemModalLabel" aria-hidden="true"
+                data-bs-backdrop="static">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title w-100" id="itemModalLabel">
+                                <div class="form-group">
+                                    <label v-if="editable" for="title" class="input_text">議事錄標題 :</label>
+                                    <input v-if="editable" id="title" type="text" class="form-control"
+                                        placeholder="例：113-2學生代表大會第一次定期大會議程暨關係文書" aria-label="會議標題"
+                                        aria-describedby="basic-addon1" v-model="modalTitle">
+                                    <div v-else class="input_text">{{modalTitle}}</div>
+                                </div>
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div v-if="editable" class="form-group">
+                                <label for="session" class="input_text">屆數 :</label>
+                                <input id="session" type="text" class="form-control" placeholder="例：第二十六屆"
+                                    aria-label="屆數" aria-describedby="basic-addon1" v-model="modalSession">
+                            </div>
+                            <div class="form-group">
+                                <label for="date" class="input_text">會議時間 :</label>
+                                <input v-if="editable" id="date" type="datetime-local" class="form-control"
+                                    aria-label="會議日期" aria-describedby="basic-addon1" v-model="modalDate">
+                                <div v-else class="input_text">{{modalDate}}</div>
+                            </div>
+                            <div class="form-group">
+                                <label for="place" class="input_text">會議地點 :</label>
+                                <input v-if="editable" id="place" type="text" class="form-control" placeholder="會議地點"
+                                    aria-label="會議地點" aria-describedby="basic-addon1" v-model="modalPlace">
+                                <div v-else class="input_text">{{modalPlace}}</div>
+                            </div>
+                            <div class="form-group">
+                                <label for="contact_person" class="input_text">會議聯絡人 :</label>
+                                <input v-if="editable" id="contact_person" type="text" class="form-control"
+                                    placeholder="會議聯絡人" aria-label="會議聯絡人" aria-describedby="basic-addon1"
+                                    v-model="modalPerson">
+                                <div v-else class="input_text">{{modalPerson}}</div>
+                            </div>
+                            <div class="form-group">
+                                <label for="shorthand_link" class="input_text">速記連結 :</label>
+                                <input v-if="editable" id="shorthand_link" type="text" class="form-control"
+                                    placeholder="速記連結" aria-label="速記連結" aria-describedby="basic-addon1"
+                                    v-model="modalShorthand">
+                                <div v-else>
+                                    <a v-if="modalShorthand" class="input_text" :href="modalShorthand"
+                                        target="_blank">速記</a>
+                                    <span v-else class="text-muted">（尚無速記）</span>
+                                </div>
+                            </div>
+                            <div v-if="pairedPresents[0][1]===null" class="form-group">
+                                <label for="present_list" class="input_text">出席名單 </label>
+                                <textarea v-if="editable" id="present_list" class="form-control auto-resize-textarea"
+                                    placeholder="例：本會各學生代表、......&#13;&#10; (稱謂和名字請以空白隔開，人物之間請以逗號分隔)" aria-label="出席名單"
+                                    aria-describedby="basic-addon1" v-model="modalPresentEdit"
+                                    @input="autoResize($event)"></textarea>
+                                <div v-else class="members-table">
+                                    <div class="member-row" v-for="(pair, index) in pairedPresents" :key="index">
+                                        <div class="member-col" v-for="(item, idx) in pair" :key="idx" v-if="item">
+                                            <span class="persontitle">{{ item.split(' ')[0] }}</span>
+                                            <span class="name">{{ item.split(' ')[1] }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="members-table">
+                                <label for="attendance_list" class="input_text">出席名單 </label>
+                                <div class="members-table">
+                                    <div class="member-row" v-for="(pair, index) in pairedPresents" :key="index">
+                                        <div class="member-col" v-for="(item, idx) in pair" :key="idx" v-if="item">
+                                            <span class="persontitle">{{ item.split(' ')[0] }}</span>
+                                            <span class="name">{{ item.split(' ')[1] }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="editable" class="form-group">
+                                <label for="attendance_list" class="input_text">列席名單 </label>
+                                <textarea id="attendance_list" class="form-control auto-resize-textarea"
+                                    placeholder="例：被提名人 王o明、被提名人 王x明、本會各秘書、......&#13;&#10; (稱謂和名字請以空白隔開，人物之間請以逗號分隔)"
+                                    aria-label="列席名單" aria-describedby="basic-addon1" v-model="modalAttendanceEdit"
+                                    @input="autoResize($event)"></textarea>
+                            </div>
+                            <div v-else class="members-table">
+                                <label for="attendance_list" class="input_text">列席名單 </label>
+                                <div class="members-table">
+                                    <div class="member-row" v-for="(pair, index) in pairedAttendances" :key="index">
+                                        <div class="member-col" v-for="(item, idx) in pair" :key="idx" v-if="item">
+                                            <span class="persontitle">{{ item.split(' ')[0] }}</span>
+                                            <span class="name">{{ item.split(' ')[1] }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="input_text">議程</div>
+                            <div v-for="(schedule, index) in numberedMergedSchedule" :key="index" class="mb-2">
+                                <div v-if="index === modalbeforeDiscussion && editable">
+                                    <div class="agenda-item">
+                                        <button type="button" class="schedule_btn" @click="add_schedule()">＋議程</button>
+                                        <input id="schedule_title" type="text" class="form-control"
+                                            placeholder="新增之議程標題 e.g. 人事同意案" aria-label="新增之議程標題">
+                                    </div>
+                                    <br>
+                                </div>
+                                <!-- 議程標題 -->
+                                <div class="agenda-item">
+                                    <div class="normal_text">{{ schedule.number }}、{{ schedule.title }}</div>
+                                    <div v-if="!isTitleRestricted(schedule.title) && editable">
+                                        <button class="btn delete_btn" @click="deleteSchedule(index)">－議程</button>
+                                    </div>
+                                </div>
+                                <!-- 細項列表 -->
+                                <div v-for="(detail, dIndex) in schedule.details" :key="dIndex"
+                                    :class="['detail-wrapper', editable ? 'editable' : 'readonly']">
+                                    <template v-if="editable">
+                                        <textarea class="form-control mb-2 auto-resize-textarea"
+                                            v-model="detail.content" :ref="`detailTextarea-${index}-${dIndex}`"
+                                            placeholder="請輸入內容" @input="autoResize($event)">
+                                              </textarea>
+                                        <!-- 舊有檔案列表 -->
+                                        <div v-if="detail.file_urls && detail.file_urls.length" class="mb-2"
+                                            :ref="`oldFiles-${index}-${dIndex}`">
+                                            <div class="fw-bold text-start">原始檔案：</div>
+                                            <div v-for="(url, fIndex) in detail.file_urls" :key="'old-' + fIndex"
+                                                class="d-flex align-items-center mb-1">
+                                                <a :href="url" target="_blank" class="me-2">{{
+                                                    detail.file_names[fIndex] }}</a>
+                                                <button class="btn btn-danger btn-sm delete_btn bi bi-trash3"
+                                                    @click="deleteFile(index, dIndex, fIndex, 'old')"></button>
+                                            </div>
+                                        </div>
+                                        <!-- 新增檔案列表 -->
+                                        <div v-if="detail.new_files && detail.new_files.length" class="mb-2"
+                                            :ref="`newFiles-${index}-${dIndex}`">
+                                            <div class="fw-bold text-start">新增檔案：</div>
+                                            <div v-for="(file, nfIndex) in detail.new_files" :key="'new-' + nfIndex"
+                                                class="d-flex align-items-center mb-1">
+                                                <span class="me-2">{{ file.name }}</span>
+                                                <button class="btn btn-danger btn-sm delete_btn bi bi-trash3"
+                                                    @click="deleteFile(index, dIndex, nfIndex, 'new')"></button>
+                                            </div>
+                                        </div>
+                                        <!-- 檔案上傳 input -->
+                                        <input type="file" @change="handleNewFileChange($event, index, dIndex)"
+                                            class="form-control mt-2">
+                                    </template>
+                                    <!-- 🧾 唯讀模式 -->
+                                    <div v-else>
+                                        <div class="detail-text">（{{ chineseNumbers[dIndex]}}）{{
+                                            detail.content.trim().replace(/\n+/g, '\n')}}</div>
+                                        <div v-if="detail.file_urls && detail.file_urls.length">
+                                            <div v-for="(url, fIndex) in detail.file_urls" :key="'old-' + fIndex"
+                                                class="d-flex align-items-center mb-1">
+                                                <a :href="url" target="_blank" class="me-2">{{
+                                                    detail.file_names[fIndex]}}</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="editable" class="agenda-item">
+                                    <button class="btn detail_btn" @click="add_detail(index)">＋細項</button>
+                                    <div v-if="schedule.details.length > 0">
+                                        <button class="btn delete_btn" @click="deleteDetail(index)">
+                                            －細項
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="editable" class="agenda-item mb-3 d-flex align-items-center">
+                                <label class="input_text mb-0 me-2" style="min-width: auto;">是否上架：</label>
+                                <label class="switch">
+                                    <input type="checkbox" v-model="is_visible" />
+                                    <span class="slider"></span>
+                                </label>
+                                <span class="ms-2">{{ is_visible ? '上架' : '不上架' }}</span>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button v-if="editable" type="button" class="btn btn_save"
+                                @click="saveChange(userid)">儲存議事錄</button>
+                            <div v-if="uploading" class="uploading-overlay">
+                                <div class="uploading-box">
+                                    <div class="spinner-border custom-spinner" role="status"></div>
+                                    <span class="uploading-text">上傳中，請稍候...
+                                        請不要離開此頁面</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Footer -->
+        <footer>
+            <p>&copy; 2025 Your Company. All rights reserved.</p>
+        </footer>
+    </div>
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                uploading: false,
+                loading: false,
+                chineseNumbers: ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十", "二十一", "二十二", "二十三", "二十四", "二十五", "二十六", "二十七"],
+                restrictedTitles: [
+                    "宣布開會", "確認議程", "主席報告", "報告事項", "討論事項", "臨時動議", "自由發言", "散會"
+                ],
+                latest_session: "",
+                scsession: {},
+                session_list: [],
+                modalTitle: '',  // 绑定到 input 的值
+                modalSession: '',
+                modalPlace: '',
+                modalPerson: '',
+                modalShorthand: '',
+                modalDate: '',
+                modalPresentEdit: '',
+                modalAttendanceEdit: '',
+                modalPresent: [],
+                modalAttendance: [],
+                modalSchedule: [],// 原始資料
+                modalDetails: '',
+                modaladdedschedule: [],
+                userid: 0,
+                is_visible: true,
+                hasEmptyContent: false,
+                editable: false, // 編輯模式開關
+            },
+            async created() {
+                await this.fetchBackendData();
+            },
+            computed: {
+                modalbeforeDiscussion() {
+                    return this.modalSchedule.findIndex(item => item.title === "報告事項") + 1;
+                },
+                numberedMergedSchedule() {
+                    const before = this.modalSchedule.findIndex(item => item.title === "討論事項");
+                    const merged = [
+                        ...this.modalSchedule.slice(0, before),
+                        ...this.modaladdedschedule,
+                        ...this.modalSchedule.slice(before)
+                    ];
+                    return merged.map((item, index) => ({
+                        ...item,
+                        number: this.chineseNumbers[index],
+                        details: item.details || [],
+                    }));
+                },
+                pairedAttendances() {
+                    const source = this.modalAttendance;
+                    const pairs = [];
+
+                    const half = Math.ceil(source.length / 2);
+
+                    for (let i = 0; i < half; i++) {
+                        const first = source[i];
+                        const second = source[i + half] || null;
+                        pairs.push([first, second]);
+                    }
+
+                    return pairs;
+                },
+                pairedPresents() {
+                    const source = this.modalPresent;
+                    const pairs = [];
+
+                    const half = Math.ceil(source.length / 2);
+
+                    for (let i = 0; i < half; i++) {
+                        const first = source[i];
+                        const second = source[i + half] || null;
+                        pairs.push([first, second]);
+                    }
+                    if (pairs.length === 0) return [[null, null]]
+                    return pairs;
+                },
+            },
+            methods: {
+                async fetchBackendData() {// 获取后端数据的方法
+                    try {
+                        const response = await axios.get('/minutes/data');
+                        if (response.data) {
+                            this.session_list = response.data.session_list;
+                            this.editable = response.data.editable; // 由後端控制
+                            const tmp = response.data.records;
+                            for (let i = 0; i < tmp.length; i++) {
+                                if (!(tmp[i]["session"] in this.scsession)) {
+                                    this.$set(this.scsession, tmp[i]["session"], []);
+                                }
+                                this.scsession[tmp[i]["session"]].push(tmp[i]);
+                            }
+                            this.latest_session = this.session_list[0];
+                        }
+                    } catch (error) {
+                        alert(`無法正確取得議事錄資料，請截圖並和工程師聯繫。\n錯誤訊息為 : ${error}`);
+                    }
+                },
+                closeModal() {
+                    var myModal = bootstrap.Modal.getInstance(document.getElementById('itemModal'));
+                    myModal.hide();
+                },
+                isTitleRestricted(title) {// 判断标题是否在不允许删除的列表中
+                    return this.restrictedTitles.includes(title);
+                },
+                parseString(str) {
+                    const result = [];
+                    if (!str || str.trim() === "") throw new Error("輸入不能為空白");
+
+                    if (/^\S+$/.test(str.trim())) {
+                        const items = str.trim().split("、")
+                        return [{ role: items[0], members: [] }];
+                    }
+
+                    const items = str.split("、")
+                        .map(item => item.trim())
+                        .filter(item => item !== "");
+
+                    items.forEach(item => {
+                        item = item.replace(/\s+/g, " ");
+                        const parts = item.split(" ");
+
+                        if (parts.length < 2) {
+                            result.push({ role: parts[0], members: [] });
+                            return;
+                        }
+
+                        const role = parts[0];
+                        const name = parts.slice(1).join(" ");
+
+                        let existing = result.find(entry => entry.role === role);
+                        if (existing) {
+                            existing.members.push(name);
+                        } else {
+                            result.push({ role, members: [name] });
+                        }
+                    });
+                    return result;
+                },
+                async openModal(itemID) {
+                    const modalEl = document.getElementById("itemModal");
+                    this.userid = itemID
+                    this.modaladdedschedule = []; //  清空新增議程（避免堆疊）
+                    this.modalTitle = ""
+                    this.modalSession = this.latest_session
+                    this.modalPlace = ""
+                    this.modalPerson = ""
+                    this.modalShorthand = ""
+                    this.modalDate = ""
+                    this.modalPresentEdit = ""
+                    this.modalAttendanceEdit = ""
+                    this.modalPresent = []
+                    this.modalAttendance = []
+                    this.is_visible = true
+                    this.modalSchedule = [
+                        { title: "宣布開會", details: [] },
+                        { title: "確認議程", details: [] },
+                        { title: "主席報告", details: [] },
+                        { title: "報告事項", details: [] },
+                        { title: "討論事項", details: [] },
+                        { title: "臨時動議", details: [] },
+                        { title: "自由發言", details: [] },
+                        { title: "散會", details: [] },
+                    ]
+                    this.modalDetails = ''
+
+                    if (!(itemID === -1)) {
+                        await this.getdetail(itemID);
+                    }
+                    this.loading = false;
+                    // 資料準備好再開啟 modal
+                    modalEl.addEventListener('shown.bs.modal', () => {
+                        this.autoResizeAll();
+                    });
+                    const modal = new bootstrap.Modal(modalEl);
+
+                    modal.show();
+                },
+                async getdetail(itemID) {
+                    this.loading = true;
+                    this.modalSession = ""
+                    this.modalSchedule = []
+                    try {
+                        const response = await axios.get(`/minutes/data/${itemID}`);
+                        if (response.data) {
+                            const tmp = response.data.records[0];
+                            this.modalTitle = tmp.title
+                            this.modalSession = tmp.session
+                            this.modalPlace = tmp.place
+                            this.modalPerson = tmp.person
+                            this.modalShorthand = tmp.shorthand
+                            this.modalDate = this.formatDate(new Date(tmp.date))
+                            this.is_visible = tmp.is_visible
+
+                            // 使用
+                            let present = tmp.present
+                            let attendance = tmp.attendance
+
+                            if (this.editable) {
+                                this.modalPresentEdit = this.formatPresentOrAttendance(present, true)
+                                this.modalAttendanceEdit = this.formatPresentOrAttendance(attendance, true)
+                            } else {
+                                this.modalPresent = this.formatPresentOrAttendance(present, false)
+                                this.modalAttendance = this.formatPresentOrAttendance(attendance, false)
+                            }
+
+                            let schedules = tmp.schedules
+                            schedules.sort((a, b) => a.id - b.id);
+
+                            for (let idx in schedules) {
+                                let details = schedules[idx].details
+                                let detail = []
+                                details.sort((a, b) => a.id - b.id);
+                                for (let dIndex in details) {
+                                    detail.push({
+                                        content: details[dIndex].content,
+                                        files: [],
+                                        file_urls: details[dIndex].file_urls || [],
+                                        file_names: details[dIndex].file_name || [],
+                                    }
+                                    )
+                                }
+                                this.modalSchedule.push({
+                                    title: schedules[idx].title,
+                                    details: detail
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        alert(`無法取得此筆議事錄資料，請截圖並和工程師聯繫。\n錯誤訊息為 : ${error}`);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async saveChange(id) {
+                    console.log('儲存ID = ', id, '的議事錄')
+                    const title = this.modalTitle.trim();
+                    const session = this.modalSession.trim();
+                    const date = document.getElementById("date").value.trim();
+                    const place = this.modalPlace.trim();
+                    const person = this.modalPerson.trim();
+                    const present = this.modalPresentEdit;
+                    const attendance = this.modalAttendanceEdit;
+                    const is_visible = this.is_visible;
+                    // ✅ 基本欄位驗證
+                    if (!title || !session || !date || !place || !person || !present || !attendance) {
+                        alert("請填寫所有必填欄位（標題、屆次、日期、地點、聯絡人、出席名單、列席名單）");
+                        return;
+                    }
+                    const formData = new FormData();
+
+                    // 基本欄位
+                    formData.append("id", id);
+                    formData.append("is_visible", is_visible);
+                    formData.append("title", title);
+                    formData.append("session", session);
+                    formData.append("date", date);
+                    formData.append("place", place);
+                    formData.append("person", person);
+                    formData.append("shorthand", document.getElementById("shorthand_link").value);
+                    formData.append("present", JSON.stringify(this.parseString(present)));
+                    formData.append("attendance", JSON.stringify(this.parseString(attendance)));
+
+                    const StructuredContent = this.getStructuredContentFromRefs();
+
+                    if (!this.hasEmptyContent) {// content 要轉成 JSON 字串送到後端
+                        formData.append("content", JSON.stringify(StructuredContent));
+                        // 把所有 new_files 一起 append 到 formData（用多個檔名區分）
+                        StructuredContent.forEach((schedule, scheduleIndex) => {
+                            schedule.details.forEach((detail, detailIndex) => {
+                                detail.files.forEach((file, fileIndex) => {
+                                    if (file instanceof File) {
+                                        // 例如命名成 newfile-0-0-0 對應 scheduleIndex-detailIndex-fileIndex
+                                        const fieldName = `newfile-${scheduleIndex}-${detailIndex}-${fileIndex}`;
+                                        formData.append(fieldName, file);
+                                    }
+                                });
+                            });
+                        });
+                        this.uploading = true;
+                        try {
+                            const response = await axios.post("/minutes/upload", formData, {
+                                headers: {
+                                    "Content-Type": "multipart/form-data"
+                                }
+                            });
+                            if (response.data) {
+                                this.session_list = response.data.session_list;
+                                const tmp = response.data.records;
+                                for (let i = 0; i < tmp.length; i++) {
+                                    if (!(tmp[i]["session"] in this.scsession)) {
+                                        this.$set(this.scsession, tmp[i]["session"], []);
+                                    }
+                                    this.scsession[tmp[i]["session"]].push(tmp[i]);
+                                }
+                                this.latest_session = this.session_list[0];
+                            }
+                            this.closeModal();
+                            this.uploading = false;
+                            window.location.reload();
+                        } catch (error) {
+                            alert(`上傳/修改議事錄失敗，請截圖並和工程師聯繫。\n錯誤訊息為 : ${error}`);
+                            this.uploading = false;
+                        }
+                    }
+                    this.hasEmptyContent = false
+                },
+                add_detail(index) {
+                    const target = this.numberedMergedSchedule;
+                    target[index].details.push({
+                        content: '',
+                        file_urls: [],
+                        file_names: [],
+                        deleted_files: [],
+                    });
+                },
+                deleteDetail(scheduleIndex) {
+                    // 確保細項存在
+                    const schedule = this.numberedMergedSchedule[scheduleIndex];
+                    if (schedule && schedule.details && schedule.details.length > 0) {
+                        const detailIndex = schedule.details.length - 1
+                        const detail = schedule.details[detailIndex];
+                        // 刪除舊檔案
+                        if (detail.file_urls && detail.file_urls.length) {
+                            detail.file_urls = [];
+                            detail.file_names = [];
+                        }
+                        // 刪除新增檔案
+                        if (detail.new_files && detail.new_files.length) {
+                            detail.new_files = [];
+                        }
+                        // 最後刪除細項
+                        schedule.details.splice(detailIndex, 1);
+                    }
+                },
+                add_schedule() {
+                    const titleInputId = 'schedule_title';
+                    const title = document.getElementById(titleInputId).value;
+                    document.getElementById(titleInputId).value = ''
+                    if (!title) {
+                        alert(`議程須有名稱`)
+                        return;
+                    }
+
+                    this.modaladdedschedule.push({
+                        title,
+                        details: [],
+                    });
+                },
+                deleteSchedule(scheduleIndex) {
+                    const schedule = this.numberedMergedSchedule[scheduleIndex];
+                    const isAddedSchedule = this.modaladdedschedule.some(item => item.title === schedule.title);
+
+                    if (isAddedSchedule) {
+                        const deleteIndex = this.modaladdedschedule.findIndex(item => item.title === schedule.title);
+                        if (deleteIndex !== -1) {
+                            this.modaladdedschedule.splice(deleteIndex, 1);
+                        }
+                    }
+                    else {
+                        const deleteIndex = this.modalSchedule.findIndex(item => item.title === schedule.title);
+                        if (deleteIndex !== -1) {
+                            this.modalSchedule.splice(deleteIndex, 1);
+                        }
+                    }
+                },
+                handleNewFileChange(event, index, dIndex) {
+                    const file = event.target.files[0];
+
+                    const maxSize = 5 * 1024 * 1024; // 單檔最大 5MB
+                    if (file) {
+                        if (file.size > maxSize) {
+                            alert(`檔案 "${file.name}" 超過 5MB，請重新選擇。`);
+                            event.target.value = "";
+                            return
+                        }
+                        const detail = this.numberedMergedSchedule[index].details[dIndex];
+                        if (!detail.new_files) {
+                            this.$set(detail, 'new_files', []);
+                        }
+                        detail.new_files.push(file);
+                    }
+                },
+                deleteFile(index, dIndex, fileIndex, type) {
+                    const detail = this.numberedMergedSchedule[index].details[dIndex];
+                    if (type === 'old') {
+                        if (!("deleted_files" in detail)) {
+                            this.$set(detail, 'deleted_files', []);
+                        }
+                        const urlParts = (detail.file_urls[fileIndex] || '').split('/');
+                        detail.deleted_files.push(urlParts[urlParts.length - 1]);
+                        detail.file_urls.splice(fileIndex, 1);
+                        detail.file_names.splice(fileIndex, 1);
+                    } else if (type === 'new') {
+                        detail.new_files.splice(fileIndex, 1);
+                    }
+                },
+                getStructuredContentFromRefs() {
+                    const contentList = [];
+
+                    this.numberedMergedSchedule.forEach((schedule, scheduleIndex) => {
+                        const scheduleContent = {
+                            title: schedule.title,
+                            details: []
+                        };
+
+                        // 遍歷 detailTextarea-* 找對應的 detail
+                        schedule.details.forEach((detail, detailIndex) => {
+                            const refKey = `detailTextarea-${scheduleIndex}-${detailIndex}`;
+                            const contentEl = this.$refs[refKey];
+                            if (!contentEl) return;  // 沒新增細項
+
+                            const contentValue = (Array.isArray(contentEl) ? contentEl[0] : contentEl)?.value || '';
+                            if (!contentValue.trim()) {
+                                alert(`${schedule.title} 的第 ${detailIndex + 1} 筆細項內容為空，請填寫內容或刪除該細項。`);
+                                this.hasEmptyContent = true;
+                            }
+                            // 舊檔案（file_names + file_urls）
+                            const file_dict = (detail.file_names || []).map((name, i) => {
+                                const urlParts = (detail.file_urls?.[i] || '').split('/');
+                                return {
+                                    name,
+                                    url: urlParts[urlParts.length - 1]
+                                };
+                            });
+                            // 新上傳檔案
+                            const new_files = detail.new_files || [];
+                            const fileNames = new_files.map(file => file.name);
+                            const deleted_files = detail.deleted_files
+                            // 加進去 detail
+                            scheduleContent.details.push({
+                                content: contentValue,
+                                fileName: fileNames,
+                                files: new_files,
+                                file_dict,
+                                deleted_files
+
+                            });
+                        });
+                        contentList.push(scheduleContent);
+                    });
+                    return contentList;
+                },
+                autoResize(event) {
+                    const textarea = event.target;
+                    textarea.style.height = 'auto';
+                    textarea.style.height = textarea.scrollHeight + 'px';
+                },
+                autoResizeAll() {
+                    const textareas = this.$el.querySelectorAll('.auto-resize-textarea');
+                    textareas.forEach((ta) => {
+                        ta.style.height = 'auto';
+                        ta.style.height = ta.scrollHeight + 'px';
+                    });
+                },
+                formatPresentOrAttendance(data, editable) {
+                    if (editable) {
+                        return data
+                            .flatMap(item =>
+                                item.members.length
+                                    ? item.members.map(member => `${item.role} ${member}`)
+                                    : [`${item.role}`]
+                            )
+                            .join("、")
+                    } else {
+                        let result = []
+                        data.forEach(item => {
+                            if (item.members.length === 0) {
+                                result.push(item.role)
+                            } else {
+                                item.members.forEach(member => {
+                                    result.push(`${item.role} ${member}`)
+                                })
+                            }
+                        })
+                        return result
+                    }
+                },
+                formatDate(date) {
+                    let year = date.getUTCFullYear();
+                    let month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                    let day = String(date.getUTCDate()).padStart(2, '0');
+                    let hours = String(date.getUTCHours()).padStart(2, '0');
+                    let minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    if (this.editable) return `${year}-${month}-${day}T${hours}:${minutes}`;
+                    return `${year}-${month}-${day}  ${hours}:${minutes}`;
+                }
+            },
+        });
+    </script>
+    {% endraw %}
+
+</body>
+
+</html>

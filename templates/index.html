@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script> <!-- 引入 Axios -->
+    <!-- 引入外部CSS文件 -->
+    <link rel="stylesheet" href="/static/css/index.css">
+</head>
+
+<body>
+    {% raw %}
+    <div id="app">
+        <div class="login-container">
+            <h1>{{ message }}</h1>
+            <form @submit.prevent="onLogin">
+                <input type="text" id="username" name="username" class="input-field" placeholder="Username" required>
+                <input type="password" id="password" name="password" class="input-field" placeholder="Password"
+                    required>
+                <button type="submit" class="login-btn">Login</button>
+            </form>
+            <p class="error-message" v-if="errorMessage">{{ errorMessage }}</p>
+            <br>
+            <button type="button" class="login-btn" @click="viewer()">進入瀏覽者畫面</button>
+        </div>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                isLoggingOut: false,  // 用來避免無限刷新
+                message: 'Please log in',
+                username: '',
+                password: '',
+                errorMessage: ''
+            },
+            created() {
+
+                // 在頁面加上一個自定義的歷史狀態，避免直接返回上一頁
+                history.replaceState({}, null, window.location.href);  // 初始頁面加上一個替換的歷史記錄
+
+                // 監聽popstate事件，返回上一頁或前進頁面時自動登出
+                window.addEventListener('popstate', (event) => {
+                    this.checkAndLogout();
+                });
+
+                // 確保頁面在載入時自動推送一個新的歷史狀態，避免返回時不觸發 popstate
+                this.monitorHistoryChange();
+            },
+            methods: {
+                async onLogin() {
+                    try {
+                        this.username = document.getElementById("username").value;
+                        this.password = document.getElementById("password").value;
+
+                        const response = await axios.post('/login', {
+                            username: this.username,
+                            password: this.password
+                        });
+
+                        if (response.data.success) {
+                            sessionStorage.setItem("loggedIn", "true");
+                            window.location.href = "/notifi";  // 登录成功，跳转到 /admin/notifi 页面
+
+                        } else {
+                            this.errorMessage = "Invalid credentials";
+                            window.location.href = "/";
+
+                        }
+                    } catch (error) {
+                        this.errorMessage = "登入失敗，請檢查用戶名和密碼";
+                    }
+                },
+                logoutAutomatically() {
+                    if (this.isLoggingOut) return;  // 防止多次執行
+
+                    this.isLoggingOut = true;  // 標記為正在登出
+
+                    fetch('/logout', {
+                        method: 'GET',
+                        credentials: 'same-origin'
+                    }).then(() => {
+                        // 登出完成後，刷新頁面
+                        window.location.href = '/';
+                    }).catch(err => {
+                        console.error("登出失敗", err);
+                        this.isLoggingOut = false;  // 如果失敗，重新啟用登出標誌
+                    });
+                },
+                monitorHistoryChange() {
+                    history.pushState({}, null, window.location.href);  // 推送新的歷史狀態，避免直接返回
+                },
+
+                // 檢查登錄狀態並登出
+                checkAndLogout() {
+                    if (window.location.pathname === '/notifi' && !this.isLoggingOut) {
+                        this.logoutAutomatically();
+                    }
+                },
+                viewer() {
+                    window.location.href = '/notifi';
+                }
+            },
+            mounted() {
+                // 確保每次載入頁面時檢查是否需要登出
+                this.checkAndLogout();
+
+                // 監聽 pageshow 事件，防止 Safari 快取導致的問題
+                window.addEventListener('pageshow', (event) => {
+                    if (event.persisted) {
+                        // 使用者是從快取回來的，強制登出
+                        this.logoutAutomatically();
+                    }
+                });
+            }
+        });
+    </script>
+    {% endraw %}
+</body>
+
+</html>
