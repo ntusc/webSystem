@@ -1,0 +1,4 @@
+.env
+# 忽略 Python 編譯檔案
+*.pyc
+__pycache__/
